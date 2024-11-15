@@ -4,3 +4,4 @@ pandas==2.2.3
 tensorflow==2.18.0
 tensorflow-io-gcs-filesystem==0.31.0
 gunicorn==20.1.0
+scikit-learn==1.5.2
