@@ -6,7 +6,11 @@ import numpy as np
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
+import os
+import traceback
+import numpy as np
+import tensorflow as tf
+from flask import Flask, request, jsonify
 
 with open("crop_prediction.pkl", "rb") as f:
     crop_model = pickle.load(f)
@@ -54,21 +58,33 @@ os.makedirs('temp', exist_ok=True)
 @app.route("/predict-image", methods=["POST"])
 def predict_image():
     try:
+        # Check for image file in request
         if 'image' not in request.files:
             return jsonify({"error": "No image file found"}), 400
+
         image_file = request.files['image']
         if image_file.filename == '':
             return jsonify({"error": "No selected image"}), 400
-        
+
+        # Save the image to the `temp` directory
         image_path = os.path.join('temp', image_file.filename)
         image_file.save(image_path)
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+        # Load and preprocess the image
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU for TensorFlow
         image = tf.keras.preprocessing.image.load_img(image_path, target_size=(128, 128))
-        input_arr = tf.keras.preprocessing.image.img_to_array(image)
-        input_arr = np.array([input_arr])  # Convert single image to a batch.
+        input_arr = tf.keras.preprocessing.image.img_to_array(image) / 255.0  # Normalize to [0, 1]
+        input_arr = np.expand_dims(input_arr, axis=0)  # Add batch dimension
+
+        # Check if the model is loaded
+        if cnn is None:
+            raise ValueError("Model is not loaded.")
+
+        # Make predictions
         predictions = cnn.predict(input_arr)
-        
         result_index = np.argmax(predictions)
+
+        # Class names for the model
         class_names = [
             'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
             'Blueberry___healthy', 'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy',
@@ -84,11 +100,14 @@ def predict_image():
             'Tomato___healthy'
         ]
         model_prediction = class_names[result_index]
-        
-        return jsonify({"prediction": model_prediction})
+
+        return jsonify({"prediction": model_prediction}), 200
 
     except Exception as e:
-        return jsonify({"error": "Prediction failed"}), 500
+        # Log the error
+        print("Error in prediction:", str(e))
+        print(traceback.format_exc())
+        return jsonify({"error": "Prediction failed", "details": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
