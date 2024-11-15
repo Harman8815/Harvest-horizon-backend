@@ -50,7 +50,7 @@ def predict():
 #         return jsonify({"prediction": prediction})
 #     except Exception as e:
 #         return jsonify({"error": "Prediction failed"}), 500
-
+os.makedirs('temp', exist_ok=True)
 @app.route("/predict-image", methods=["POST"])
 def predict_image():
     try:
