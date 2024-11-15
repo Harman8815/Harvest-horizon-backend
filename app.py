@@ -3,6 +3,7 @@ import pickle
 import pandas as pd
 import os
 import numpy as np
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
@@ -61,7 +62,7 @@ def predict_image():
         
         image_path = os.path.join('temp', image_file.filename)
         image_file.save(image_path)
-
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
         image = tf.keras.preprocessing.image.load_img(image_path, target_size=(128, 128))
         input_arr = tf.keras.preprocessing.image.img_to_array(image)
         input_arr = np.array([input_arr])  # Convert single image to a batch.
