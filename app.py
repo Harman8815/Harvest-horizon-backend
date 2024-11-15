@@ -1,52 +1,94 @@
-import os
 from flask import Flask, request, jsonify
 import pickle
 import pandas as pd
+import os
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+
+with open("crop_prediction.pkl", "rb") as f:
+    crop_model = pickle.load(f)
+
+with open("yield_production.pkl", "rb") as f:
+    yield_model = pickle.load(f)
+
+# rf_model = pickle.load(open(r"RandomForest.pkl", 'rb'))
+# dtr = pickle.load(open('dtr.pkl', 'rb'))
+# preprocessor = pickle.load(open('preprocessor.pkl', 'rb'))
+
+cnn = tf.keras.models.load_model('trained_model.keras')
 
 app = Flask(__name__)
 
-# Load the model from the .pkl file
-try:
-    with open("crop_prediction.pkl", "rb") as f:
-        model = pickle.load(f)
-    print("Model loaded successfully.")
-except Exception as e:
-    print("Error loading model:", e)
-
-# Home route
-@app.route("/")
-def home():
-    print("Home endpoint accessed.")
-    return "Hello! Welcome to the Crop Prediction API."
-
 @app.route("/predict", methods=["POST"])
 def predict():
-    # Step 1: Extract data from the request
+    data = request.json
     try:
-        data = request.json
-        print("Request data received:", data)
-    except Exception as e:
-        print("Error extracting JSON data:", e)
-        return jsonify({"error": "Invalid JSON data"}), 400
-
-    # Step 2: Convert data to DataFrame
-    try:
-        input_data = pd.DataFrame([data])  # Convert to DataFrame for model input
-        print("Data converted to DataFrame:", input_data)
-    except Exception as e:
-        print("Error converting data to DataFrame:", e)
-        return jsonify({"error": "Data conversion failed"}), 500
-
-    # Step 3: Make a prediction
-    try:
-        prediction = model.predict(input_data)[0]
-        print("Prediction result:", prediction)
+        input_data = pd.DataFrame([data])
+        prediction = crop_model.predict(input_data)[0]
         return jsonify({"prediction": prediction})
     except Exception as e:
-        print("Error during prediction:", e)
+        return jsonify({"error": "Prediction failed"}), 500
+
+# @app.route("/predict-yield", methods=["POST"])
+# def yield_pred():
+#     data = request.json
+#     try:
+#         input_data = pd.DataFrame([data])
+#         year = data.get('year')
+#         average_rain_fall_mm_per_year = data.get('average_rain_fall_mm_per_year')
+#         pesticides_tonnes = data.get('pesticides_tonnes')
+#         avg_temp = data.get('avg_temp')
+#         area = data.get('area')
+#         item = data.get('item')
+#         features = np.array([[year, average_rain_fall_mm_per_year, pesticides_tonnes, avg_temp, area, item]], dtype=object)
+#         transformed_features = preprocessor.transform(features)
+#         prediction = dtr.predict(transformed_features).reshape(1, -1)
+#         prediction = prediction[0]
+#         return jsonify({"prediction": prediction})
+#     except Exception as e:
+#         return jsonify({"error": "Prediction failed"}), 500
+
+@app.route("/predict-image", methods=["POST"])
+def predict_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file found"}), 400
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify({"error": "No selected image"}), 400
+        
+        image_path = os.path.join('temp', image_file.filename)
+        image_file.save(image_path)
+
+        image = tf.keras.preprocessing.image.load_img(image_path, target_size=(128, 128))
+        input_arr = tf.keras.preprocessing.image.img_to_array(image)
+        input_arr = np.array([input_arr])  # Convert single image to a batch.
+        predictions = cnn.predict(input_arr)
+        
+        result_index = np.argmax(predictions)
+        class_names = [
+            'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
+            'Blueberry___healthy', 'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy',
+            'Corn_(maize)___Cercospora_leaf_spot_Gray_leaf_spot', 'Corn_(maize)___Common_rust_',
+            'Corn_(maize)___Northern_Leaf_Blight', 'Corn_(maize)___healthy', 'Grape___Black_rot',
+            'Grape___Esca_(Black_Measles)', 'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)', 'Grape___healthy',
+            'Orange___Haunglongbing_(Citrus_greening)', 'Peach___Bacterial_spot', 'Peach___healthy',
+            'Pepper,_bell___Bacterial_spot', 'Pepper,_bell___healthy', 'Potato___Early_blight', 'Potato___Late_blight',
+            'Potato___healthy', 'Raspberry___healthy', 'Soybean___healthy', 'Squash___Powdery_mildew',
+            'Strawberry___Leaf_scorch', 'Strawberry___healthy', 'Tomato___Bacterial_spot', 'Tomato___Early_blight',
+            'Tomato___Late_blight', 'Tomato___Leaf_Mold', 'Tomato___Septoria_leaf_spot', 'Tomato___Spider_mites_',
+            'Tomato___Target_Spot', 'Tomato___Tomato_Yellow_Leaf_Curl_Virus', 'Tomato___Tomato_mosaic_virus',
+            'Tomato___healthy'
+        ]
+        model_prediction = class_names[result_index]
+        
+        return jsonify({"prediction": model_prediction})
+
+    except Exception as e:
         return jsonify({"error": "Prediction failed"}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print(f"Starting app on port {port}")
     app.run(host="0.0.0.0", port=port)
